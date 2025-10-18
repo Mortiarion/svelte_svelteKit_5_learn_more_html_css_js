@@ -1,1 +1,50 @@
 @import 'tailwindcss';
+
+html {
+	@apply transition-colors duration-300;
+}
+
+html.light {
+	@apply bg-white text-black;
+}
+
+html.dark {
+	@apply bg-gray-900 text-white;
+}
+
+input,
+textarea,
+select,
+button {
+	@apply rounded border p-2 transition-colors;
+}
+
+html.light input,
+html.light textarea,
+html.light select,
+html.dark button {
+	@apply border-gray-300 bg-white text-black;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select,
+html.dark button {
+	@apply border-gray-600 bg-gray-800 text-white;
+}
+
+.hover\:bg-gray-100:hover {
+	@apply transition-colors;
+}
+
+html.light button .hover\:bg-gray-100:hover {
+	@apply bg-gray-100;
+}
+
+html.dark .hover\:bg-gray-100:hover {
+	@apply bg-gray-700;
+}
+
+button {
+    cursor: pointer;
+}
