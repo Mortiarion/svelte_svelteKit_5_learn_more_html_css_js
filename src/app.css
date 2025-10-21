@@ -9,7 +9,9 @@ html.light {
 }
 
 html.dark {
-	@apply bg-gray-900 text-white;
+	/* @apply bg-gray-800 text-white; */
+	background-color: #131b27;
+	color: #eaf6ff;
 }
 
 input,
@@ -22,14 +24,16 @@ button {
 html.light input,
 html.light textarea,
 html.light select,
-html.dark button {
+html.lignt button {
 	@apply border-gray-300 bg-white text-black;
 }
 
 html.dark input,
 html.dark textarea,
 html.dark select,
-html.dark button {
+html.dark button,
+html.dark ul,
+html.dark section{
 	@apply border-gray-600 bg-gray-800 text-white;
 }
 

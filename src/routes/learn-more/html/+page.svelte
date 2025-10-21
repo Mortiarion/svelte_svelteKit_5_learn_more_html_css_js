@@ -1,717 +1,647 @@
 <script lang="ts">
-	import { browser } from '$app/environment'; // SvelteKit import for SSR check
+	import { writable } from 'svelte/store';
 
-	/* ----------------------
-		TИПИ
-	-----------------------*/
-	type RelVariant = {
-		value: string;
-		title?: string;
-		description: string;
-		example: string;
-		notes?: string;
-	};
-
-	type Attr = {
+	interface Tag {
 		name: string;
 		description: string;
-		example?: string;
-		note?: string;
-	};
-
-	type Target = '_self' | '_blank' | '_parent' | '_top' | '';
-	type ReferrerPolicy =
-		| ''
-		| 'no-referrer'
-		| 'origin'
-		| 'strict-origin-when-cross-origin'
-		| 'same-origin'
-		| 'strict-origin'
-		| 'no-referrer-when-downgrade'
-		| 'unsafe-url';
-	type RelValue = string; // Allow combinations like "noopener noreferrer"
-
-	/* ----------------------
-		СТАНИ ($state / $derived)
-	-----------------------*/
-	let opened = $state<Record<string, boolean>>({
-		overview: true,
-		syntax: false,
-		attributes: false,
-		rel: false,
-		accessibility: false,
-		security: false,
-		seo: false,
-		examples: false,
-		live: true
-	});
-
-	// Live preview controls
-	let href = $state('https://example.com');
-	let target = $state<Target>('_self');
-	let rel = $state<RelValue>('noopener noreferrer');
-	let download = $state('');
-	let hreflang = $state('');
-	let referrerpolicy = $state<ReferrerPolicy>('');
-	let typeHint = $state('text/html');
-	let linkText = $state('Перейти за посиланням');
-
-	// HTML escape function to prevent XSS
-	function escapeHtml(unsafe: string): string {
-		return unsafe
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
+		example: string;
+		notes: string;
+		accessibility: string;
+		commonAttributes: { name: string; desc: string }[];
+		type: 'block' | 'inline';
+		category: string;
+		relatedTags?: string[]; // Нове: пов'язані теги
+		quiz?: { question: string; options: string[]; correct: number; explanation: string }[]; // Нове: квіз
+	}
+	// Функція дебонсингу
+	function debounce<T extends (...args: any[]) => void>(fn: T, delay = 300) {
+		let timeout: ReturnType<typeof setTimeout>;
+		return (...args: Parameters<T>) => {
+			clearTimeout(timeout);
+			timeout = setTimeout(() => fn(...args), delay);
+		};
 	}
 
-	// Construct preview HTML as derived
-	let previewSrcdoc = $derived(`
-<!doctype html>
-<html lang="uk">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Preview: &lt;a&gt;</title>
-<style>
-	body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;padding:24px}
-	.container{max-width:760px;margin:0 auto}
-	.preview-box{border:1px solid #e5e7eb;padding:16px;border-radius:8px}
-	a.preview-link{display:inline-block;padding:8px 12px;border-radius:6px;background:#2563eb;color:white;text-decoration:none}
-	.info{margin-top:12px;color:#374151;font-size:13px}
-</style>
-</head>
-<body>
-<div class="container">
-	<h3>Live preview</h3>
-	<div class="preview-box">
-		<p>Натисни посилання нижче — у залежності від <code>target</code> і <code>rel</code> поведінка може відрізнятися.</p>
-		<a
-			class="preview-link"
-			href="${escapeHtml(href)}"
-			target="${escapeHtml(target === '' ? '_self' : target)}"
-			${rel ? `rel="${escapeHtml(rel)}"` : ''}
-			${download ? `download="${escapeHtml(download)}"` : ''}
-			${hreflang ? `hreflang="${escapeHtml(hreflang)}"` : ''}
-			${referrerpolicy ? `referrerpolicy="${escapeHtml(referrerpolicy)}"` : ''}
-			${typeHint ? `type="${escapeHtml(typeHint)}"` : ''}
-		>${escapeHtml(linkText)}</a>
+	// Стан компонента
+	const query = writable<string>('');
+	const selectedTag = writable<Tag | null>(null);
+	const liveCode = writable<string>('');
+	const liveCss = writable<string>('');
+	const livePreview = writable<string>('');
+	const activeCategory = writable<string>('all');
 
-		<div class="info">
-			<strong>href:</strong> ${escapeHtml(href)} — 
-			<strong>target:</strong> ${escapeHtml(target || '_self')} — 
-			<strong>rel:</strong> ${escapeHtml(rel || '(none)')}
-		</div>
-	</div>
-
-	<script>
-		(() => {
-			const a = document.querySelector('a.preview-link');
-			if (!a) return;
-			a.addEventListener('click', (e) => {
-				console.log('Link clicked:', a.href, 'target=', a.target, 'rel=', a.rel);
-			});
-		})();
-	</scr' + 'ipt>
-</div>
-</body>
-</html>
-`);
-
-	/* ----------------------
-		ДАНІ: атрибути, rel-варіанти
-	-----------------------*/
-	const attributes: Attr[] = [
+	// Масив тегів із застарілими
+	const tags: Tag[] = [
+		// Документ
 		{
-			name: 'href',
-			description:
-				'Основний атрибут: URL або URI-референс, на який веде посилання. Підтримує відносні та абсолютні URL, а також схеми (mailto:, tel:, file:, data: тощо).',
-			example: '<a href="/about">Про нас</a>'
+			name: 'html',
+			description: 'Кореневий елемент HTML-документа.',
+			example: '<!DOCTYPE html><html lang="uk"><body>Вміст</body></html>',
+			notes: 'Завжди починайте з <!DOCTYPE html>.',
+			accessibility: 'Атрибут lang допомагає екранним читачам.',
+			commonAttributes: [{ name: 'lang', desc: 'Мова документа (uk, en тощо).' }],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'target',
-			description:
-				'Де відкривати посилання. Поширені значення: _self (за замовчуванням), _blank (нова вкладка), _parent, _top або ім’я фрейма.',
-			example: '<a href="https://site" target="_blank">Відкрити нову вкладку</a>',
-			note: 'Якщо використовується _blank, додавай rel="noopener" або rel="noopener noreferrer"'
+			name: 'head',
+			description: 'Містить метадані документа (не відображається на сторінці).',
+			example: '<head><title>Мій сайт</title></head>',
+			notes: 'Використовуйте для CSS, JS, SEO.',
+			accessibility: 'Не впливає напряму на доступність.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'rel',
-			description:
-				'Описує відносини між поточним документом і цільовим ресурсом (детальніше нижче). Може мати кілька значень через пробіл.',
-			example: '<a href="https://site" rel="nofollow sponsored">Рекламне посилання</a>'
+			name: 'body',
+			description: 'Основний вміст, який бачить користувач.',
+			example: '<body><h1>Привіт!</h1></body>',
+			notes: 'Дозволяється лише один body на сторінку.',
+			accessibility: 'Основний контент для screen readers.',
+			commonAttributes: [{ name: 'class', desc: 'Для стилізації.' }],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'download',
-			description:
-				'Підказує браузеру скачати ресурс замість відкриття. Можна вказати бажане ім’я файлу: download="name.pdf". Працює не у всіх крос-доменних випадках.',
-			example: '<a href="/files/report.pdf" download="report-2025.pdf">Завантажити</a>'
+			name: 'title',
+			description: 'Назва документа, відображається у вкладці браузера.',
+			example: '<title>Моя сторінка</title>',
+			notes: 'Важливо для SEO та вкладок браузера.',
+			accessibility: 'Читається screen readers.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'hreflang',
-			description:
-				'Вказує мову/регіон ресурсa (ISO-коди), наприклад "en", "fr-CA". Допомагає SEO у многомовних сайтах.',
-			example: '<a href="/fr/about" hreflang="fr">Version française</a>'
+			name: 'meta',
+			description: 'Задає метадані, наприклад, кодування чи опис.',
+			example: '<meta charset="UTF-8">',
+			notes: 'Атрибут charset є обов’язковим для кодування.',
+			accessibility: 'name="description" покращує SEO.',
+			commonAttributes: [
+				{ name: 'charset', desc: 'Кодування (UTF-8).' },
+				{ name: 'name', desc: 'Тип метаданих.' }
+			],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'type',
-			description: 'Підказка MIME-типу цільового ресурсу (наприклад, "application/pdf").',
-			example: '<a href="/file.pdf" type="application/pdf">PDF</a>'
+			name: 'link',
+			description: 'Підключає зовнішні ресурси, наприклад, CSS або іконки.',
+			example: '<link rel="stylesheet" href="style.css">',
+			notes: 'Використовуйте для зовнішніх стилів.',
+			accessibility: 'Не впливає напряму.',
+			commonAttributes: [
+				{ name: 'rel', desc: 'Тип зв’язку (stylesheet тощо).' },
+				{ name: 'href', desc: 'Шлях до ресурсу.' }
+			],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'ping',
-			description:
-				'Список URL (space-separated), куди браузер може відправити POST при кліку для аналітики (відправляється асинхронно). Увага: приватність/згоди.',
-			example: '<a href="/buy" ping="/track/click">Купити</a>',
-			note: 'Може впливати на конфіденційність. Не використовуйте без політик.'
+			name: 'style',
+			description: 'Визначає вбудовані CSS-стилі.',
+			example: '<style>h1 { color: blue; }</style>',
+			notes: 'Краще для невеликих стилів, інакше використовуйте CSS-файли.',
+			accessibility: 'Не впливає напряму.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Документ'
 		},
 		{
-			name: 'referrerpolicy',
-			description:
-				'Керує поведінкою заголовка Referer при переході (напр. no-referrer, origin, strict-origin-when-cross-origin і т.д.).',
-			example: '<a href="https://site" referrerpolicy="no-referrer">Нема Referer</a>'
+			name: 'script',
+			description: 'Підключає або вставляє JavaScript-код.',
+			example: '<script>console.log("Привіт!");</\script>',
+			notes: 'Розміщуйте в кінці body для швидшого завантаження.',
+			accessibility: 'Додавайте aria-describedby для інтерактивних скриптів.',
+			commonAttributes: [{ name: 'src', desc: 'Шлях до зовнішнього JS.' }],
+			type: 'block',
+			category: 'Документ'
+		},
+		// Структура
+		{
+			name: 'div',
+			description: 'Універсальний контейнер для групування вмісту.',
+			example: '<div>Контейнер</div>',
+			notes: 'Використовуйте для макетів, але уникайте надмірного використання.',
+			accessibility: 'Додавайте role для семантики, якщо потрібно.',
+			commonAttributes: [
+				{ name: 'class', desc: 'Для стилізації.' },
+				{ name: 'id', desc: 'Унікальний ідентифікатор.' }
+			],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'span',
+			description: 'Універсальний контейнер для вбудованого вмісту.',
+			example: '<span>Текст</span>',
+			notes: 'Не змінює структуру рядка.',
+			accessibility: 'Використовуйте для стилізації тексту.',
+			commonAttributes: [{ name: 'class', desc: 'Для стилізації.' }],
+			type: 'inline',
+			category: 'Структура'
+		},
+		{
+			name: 'header',
+			description: 'Шапка сторінки або секції.',
+			example: '<header><h1>Логотип</h1></header>',
+			notes: 'Семантичний тег для верхньої частини.',
+			accessibility: 'Автоматично розпізнається screen readers.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'footer',
+			description: 'Підвал сторінки або секції.',
+			example: '<footer>© 2025</footer>',
+			notes: 'Для контактів або копірайту.',
+			accessibility: 'Автоматично розпізнається.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'main',
+			description: 'Основний вміст документа.',
+			example: '<main>Стаття</main>',
+			notes: 'Лише один на сторінку.',
+			accessibility: 'Фокус для screen readers.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'section',
+			description: 'Логічна секція з тематичним вмістом.',
+			example: '<section><h2>Розділ</h2></section>',
+			notes: 'Зазвичай містить заголовок.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'article',
+			description: 'Самостійний вміст, наприклад, пост.',
+			example: '<article><h2>Пост</h2></article>',
+			notes: 'Для блогів чи новин.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'nav',
+			description: 'Навігаційна секція.',
+			example: '<nav><a href="/">Головна</a></nav>',
+			notes: 'Для меню чи посилань.',
+			accessibility: 'Автоматично розпізнається як навігація.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		{
+			name: 'aside',
+			description: 'Боковий вміст, наприклад, сайдбар.',
+			example: '<aside>Сайдбар</aside>',
+			notes: 'Для реклами чи додаткової інформації.',
+			accessibility: 'Автоматично розпізнається як доповнення.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Структура'
+		},
+		// Текст
+		{
+			name: 'h1',
+			description: 'Головний заголовок сторінки.',
+			example: '<h1>Заголовок</h1>',
+			notes: 'Використовуйте лише один h1 на сторінку.',
+			accessibility: 'Основний для SEO та screen readers.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Текст'
+		},
+		{
+			name: 'h2',
+			description: 'Підзаголовок другого рівня.',
+			example: '<h2>Підзаголовок</h2>',
+			notes: 'Для розділів сторінки.',
+			accessibility: 'Дотримуйтесь ієрархії заголовків.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Текст'
+		},
+		{
+			name: 'p',
+			description: 'Абзац тексту.',
+			example: '<p>Текст абзацу.</p>',
+			notes: 'Автоматично додає відступи.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Текст'
+		},
+		{
+			name: 'a',
+			description: 'Гіперпосилання.',
+			example: '<a href="/">Головна</a>',
+			notes: 'Атрибут href є обов’язковим.',
+			accessibility: 'Підтримує клавіатурну навігацію.',
+			commonAttributes: [
+				{ name: 'href', desc: 'Адреса посилання.' },
+				{ name: 'target', desc: 'Куди відкрити (_blank тощо).' }
+			],
+			type: 'inline',
+			category: 'Текст'
+		},
+		{
+			name: 'strong',
+			description: 'Важливий текст із семантичним акцентом.',
+			example: '<strong>Важливо!</strong>',
+			notes: 'Краще за b для семантики.',
+			accessibility: 'Screen readers наголошують.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Текст'
+		},
+		{
+			name: 'em',
+			description: 'Текст із акцентом (курсив).',
+			example: '<em>Акцент</em>',
+			notes: 'Краще за i для семантики.',
+			accessibility: 'Голосовий акцент у screen readers.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Текст'
+		},
+		{
+			name: 'br',
+			description: 'Перенос рядка.',
+			example: 'Рядок 1<br>Рядок 2',
+			notes: 'Уникайте частого використання, краще CSS.',
+			accessibility: 'Може заплутати screen readers.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Текст'
+		},
+		{
+			name: 'hr',
+			description: 'Горизонтальна лінія для розділення.',
+			example: '<hr>',
+			notes: 'Для візуального розділення вмісту.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Текст'
+		},
+		// Списки
+		{
+			name: 'ul',
+			description: 'Ненумерований (маркований) список.',
+			example: '<ul><li>Елемент</li></ul>',
+			notes: 'Використовуйте для некритичних списків.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Списки'
+		},
+		{
+			name: 'ol',
+			description: 'Нумерований список.',
+			example: '<ol><li>Крок 1</li></ol>',
+			notes: 'Для послідовностей чи інструкцій.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [{ name: 'type', desc: 'Тип нумерації (1, a, A).' }],
+			type: 'block',
+			category: 'Списки'
+		},
+		{
+			name: 'li',
+			description: 'Елемент списку.',
+			example: '<ul><li>Пункт</li></ul>',
+			notes: 'Використовуйте в ul або ol.',
+			accessibility: 'Автоматично семантичний.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Списки'
+		},
+		// Форми
+		{
+			name: 'form',
+			description: 'Форма для введення даних.',
+			example: '<form><input type="text"></form>',
+			notes: 'Для логінів, реєстрацій тощо.',
+			accessibility: 'Додавайте label для всіх полів.',
+			commonAttributes: [
+				{ name: 'action', desc: 'Куди відправити дані.' },
+				{ name: 'method', desc: 'GET або POST.' }
+			],
+			type: 'block',
+			category: 'Форми'
+		},
+		{
+			name: 'input',
+			description: 'Поле введення (текст, чекбокси тощо).',
+			example: '<input type="text" placeholder="Введіть текст">',
+			notes: 'Понад 20 типів (text, email, checkbox).',
+			accessibility: 'Обов’язковий label або aria-label.',
+			commonAttributes: [
+				{ name: 'type', desc: 'Тип поля.' },
+				{ name: 'placeholder', desc: 'Підказка.' }
+			],
+			type: 'inline',
+			category: 'Форми'
+		},
+		{
+			name: 'button',
+			description: 'Кнопка для дій.',
+			example: '<button>Натисни</button>',
+			notes: 'Використовуйте type="submit" у формах.',
+			accessibility: 'Підтримує клавіатурну навігацію.',
+			commonAttributes: [{ name: 'type', desc: 'submit, button, reset.' }],
+			type: 'inline',
+			category: 'Форми'
+		},
+		{
+			name: 'label',
+			description: 'Підпис для полів форми.',
+			example: '<label for="x">Ім’я</label><input id="x">',
+			notes: 'Покращує UX і доступність.',
+			accessibility: 'Обов’язковий для input.',
+			commonAttributes: [{ name: 'for', desc: 'ID пов’язаного поля.' }],
+			type: 'inline',
+			category: 'Форми'
+		},
+		// Медіа
+		{
+			name: 'img',
+			description: 'Зображення.',
+			example: '<img src="https://via.placeholder.com/100" alt="Кіт">',
+			notes: 'Атрибут alt є обов’язковим.',
+			accessibility: 'Alt описує зображення для незрячих.',
+			commonAttributes: [
+				{ name: 'src', desc: 'Шлях до зображення.' },
+				{ name: 'alt', desc: 'Опис.' }
+			],
+			type: 'inline',
+			category: 'Медіа'
+		},
+		{
+			name: 'video',
+			description: 'Відео-плеєр.',
+			example: '<video controls><source src="video.mp4" type="video/mp4"></video>',
+			notes: 'Додавайте controls для UX.',
+			accessibility: 'Додавайте субтитри через <track>.',
+			commonAttributes: [
+				{ name: 'controls', desc: 'Панель керування.' },
+				{ name: 'src', desc: 'Шлях до відео.' }
+			],
+			type: 'block',
+			category: 'Медіа'
+		},
+		// Інше
+		{
+			name: 'details',
+			description: 'Розгортаний блок (акордеон).',
+			example: '<details><summary>Клік</summary><p>Текст</p></details>',
+			notes: 'Зручний для FAQ чи додаткового вмісту.',
+			accessibility: 'Автоматично підтримує клавіатуру.',
+			commonAttributes: [{ name: 'open', desc: 'Розгорнуто за замовчуванням.' }],
+			type: 'block',
+			category: 'Інше'
+		},
+		// Застарілі
+		{
+			name: 'font',
+			description: 'Задає шрифт, розмір і колір тексту (застарілий).',
+			example: '<font face="Arial" size="3" color="red">Текст</font>',
+			notes: 'Замініть на CSS (font-family, font-size, color).',
+			accessibility: 'Погано для screen readers, уникайте.',
+			commonAttributes: [
+				{ name: 'face', desc: 'Назва шрифту.' },
+				{ name: 'size', desc: 'Розмір шрифту.' },
+				{ name: 'color', desc: 'Колір тексту.' }
+			],
+			type: 'inline',
+			category: 'Застарілі'
+		},
+		{
+			name: 'center',
+			description: 'Центрує вміст (застарілий).',
+			example: '<center>Центрований текст</center>',
+			notes: 'Замініть на CSS (text-align: center).',
+			accessibility: 'Не семантичний, уникайте.',
+			commonAttributes: [],
+			type: 'block',
+			category: 'Застарілі'
+		},
+		{
+			name: 'strike',
+			description: 'Закреслений текст (застарілий).',
+			example: '<strike>Закреслений текст</strike>',
+			notes: 'Замініть на <s> або <del>.',
+			accessibility: 'Менш семантичний, уникайте.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Застарілі'
+		},
+		{
+			name: 'big',
+			description: 'Збільшує розмір тексту (застарілий).',
+			example: '<big>Великий текст</big>',
+			notes: 'Замініть на CSS (font-size).',
+			accessibility: 'Не семантичний, уникайте.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Застарілі'
+		},
+		{
+			name: 'tt',
+			description: 'Текст у стилі телетайпа (застарілий).',
+			example: '<tt>Моноширинний текст</tt>',
+			notes: 'Замініть на <code> або CSS (font-family: monospace).',
+			accessibility: 'Не семантичний, уникайте.',
+			commonAttributes: [],
+			type: 'inline',
+			category: 'Застарілі'
 		}
 	];
 
-	const relVariants: RelVariant[] = [
-		{
-			value: 'noopener',
-			title: 'noopener',
-			description:
-				'Блокує доступ відкритої сторінки до window.opener у випадку target="_blank". Рекомендується для безпеки при відкритті зовнішніх посилань.',
-			example: '<a href="https://external.com" target="_blank" rel="noopener">Open safe</a>',
-			notes: 'Не передає нічого додаткового, просто розриває посилання на opener.'
-		},
-		{
-			value: 'noreferrer',
-			title: 'noreferrer',
-			description:
-				'Не передає Referer заголовок і також блокує доступ до window.opener (якщо браузер підтримує). Використовується також для приватності.',
-			example: '<a href="https://external.com" target="_blank" rel="noreferrer">Open no-referrer</a>'
-		},
-		{
-			value: 'nofollow',
-			title: 'nofollow',
-			description:
-				'Підказка пошуковим системам не передавати "вагу" посилання і не слідувати за ним при побудові ранжування (не гарантується, але використовують пошуковики).',
-			example: '<a href="https://external.com" rel="nofollow">Do not follow</a>',
-			notes: 'Корисне для коментарів, UGC, рекламних посилань.'
-		},
-		{
-			value: 'ugc',
-			title: 'ugc (User Generated Content)',
-			description:
-				'Позначає посилання, створене користувачем (коментарі, форуми). Дозволяє пошуковим системам розрізняти такі посилання.',
-			example: '<a href="https://external.com" rel="ugc">User link</a>'
-		},
-		{
-			value: 'sponsored',
-			title: 'sponsored',
-			description:
-				'Позначає посилання, що є результатом реклами/комерційної співпраці. Використовується для SEO та прозорості.',
-			example: '<a href="https://sponsor.com" rel="sponsored">Sponsored link</a>'
-		},
-		{
-			value: 'alternate',
-			title: 'alternate',
-			description:
-				'Позначає альтернативну версію ресурсу (наприклад, RSS feed або переклад). Частіше застосовується на <link> в head, але допустиме і в <a> у деяких контекстах.',
-			example: '<a href="/feed.xml" rel="alternate" type="application/rss+xml">RSS</a>'
-		},
-		{
-			value: 'author',
-			title: 'author',
-			description: 'Вказує на сторінку автора контенту.',
-			example: '<a href="/about" rel="author">Про автора</a>'
-		},
-		{
-			value: 'bookmark',
-			title: 'bookmark',
-			description: 'Позначає постійне посилання (permalink).',
-			example: '<a href="/post/123" rel="bookmark">Постійне посилання</a>'
-		},
-		{
-			value: 'help',
-			title: 'help',
-			description: 'Посилання на допоміжну інформацію / документацію.',
-			example: '<a href="/help" rel="help">Довідка</a>'
-		},
-		{
-			value: 'license',
-			title: 'license',
-			description: 'Посилання на ліцензійні умови для поточного ресурсу.',
-			example: '<a href="/license" rel="license">Ліцензія</a>'
-		},
-		{
-			value: 'next',
-			title: 'next',
-			description: 'Посилання на наступну сторінку у послідовності (наприклад пагінація).',
-			example: '<a href="/page/2" rel="next">Наступна</a>'
-		},
-		{
-			value: 'prev',
-			title: 'prev',
-			description: 'Посилання на попередню сторінку у послідовності.',
-			example: '<a href="/page/1" rel="prev">Попередня</a>'
-		},
-		{
-			value: 'tag',
-			title: 'tag',
-			description: 'Вказує на тег або ключове слово, пов’язане з ресурсом.',
-			example: '<a href="/tags/html" rel="tag">HTML</a>'
-		},
-		{
-			value: 'external',
-			title: 'external',
-			description: 'Позначає зовнішнє посилання (інший сайт). Це семантична підказка, але не стандартна для всіх випадків.',
-			example: '<a href="https://external.com" rel="external">External</a>'
-		}
-	];
+	// Унікальні категорії
+	const categories = ['all', ...new Set(tags.map((t) => t.category))];
 
-	/* ----------------------
-		УТИЛІТИ / ФУНКЦІЇ
-	-----------------------*/
-	function toggle(section: string) {
-		opened = { ...opened, [section]: !opened[section] };
+	// Фільтрація тегів
+	$: filtered = tags.filter(
+		(t) =>
+			(t.name.toLowerCase().includes($query.toLowerCase()) ||
+				t.description.toLowerCase().includes($query.toLowerCase())) &&
+			($activeCategory === 'all' || t.category === $activeCategory)
+	);
+
+	// Вибір тегу
+	function selectTag(tag: Tag) {
+		selectedTag.set(tag);
+		liveCode.set(tag.example);
+		liveCss.set('');
+		livePreview.set(`<style>${$liveCss}</style>${$liveCode}`);
 	}
 
-	function setRelValue(value: RelValue) {
-		const validRels = relVariants.map((rv) => rv.value);
-		const values = value
-			.split(' ')
-			.filter((v) => validRels.includes(v) || v);
-		rel = values.join(' ');
-	}
+	// Реактивне оновлення прев’ю з дебонсингом
+	const updatePreview = debounce((code: string, css: string) => {
+		livePreview.set(`<style>${css}</style>${code}`);
+	}, 300);
 
-	function isValidUrl(url: string): boolean {
-		try {
-			new URL(url);
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	function openLinkDemo() {
-		if (!browser || !isValidUrl(href)) {
-			if (browser) alert('Будь ласка, введіть дійсний URL');
-			return;
-		}
-		const features = '';
-		if (target === '_blank') {
-			window.open(href, '_blank', features);
-		} else {
-			location.href = href;
-		}
-	}
-
-	function downloadPreviewHtml() {
-		if (!browser) return;
-		const blob = new Blob([previewSrcdoc], { type: 'text/html' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = 'a-preview.html';
-		a.click();
-		URL.revokeObjectURL(url);
-	}
-
-	function reset() {
-		href = 'https://example.com';
-		target = '_self';
-		rel = 'noopener noreferrer';
-		download = '';
-		hreflang = '';
-		referrerpolicy = '';
-		typeHint = 'text/html';
-		linkText = 'Перейти за посиланням';
-	}
-
-	/* ----------------------
-		МІНІ-ПРОЗРАЧНІ ПОЯСНЕННЯ (короткі)
-	-----------------------*/
-	const quickTips = [
-		'Використовуй <button> для дій, <a href> — для навігації.',
-		'Для _blank завжди додавай rel="noopener" або rel="noopener noreferrer".',
-		'Anchor text має бути описовим: замість "натисни тут" — "Завантажити звіт 2025".',
-		'Не використовуй href="javascript:...".'
-	];
+	$: updatePreview($liveCode, $liveCss);
 </script>
 
-<style>
-	/* TailwindCSS is used primarily, with minimal custom CSS */
-	pre code {
-		white-space: pre-wrap;
-	}
-</style>
+<svelte:head>
+	<title>HTML Справочник: {$selectedTag ? `<${$selectedTag.name}>` : 'Огляд'}</title>
+</svelte:head>
 
-<div class="max-w-6xl mx-auto p-6 space-y-6">
-	<header class="flex items-start justify-between gap-4">
+<div class="container mx-auto p-4">
+	<h1 class="mb-4 text-center text-2xl font-bold">🚀 HTML Справочник для новачків</h1>
+	<p class="my-2 text-center text-gray-600">
+		Експериментуйте з тегами! Категорії, CSS-редактор, доступність.
+	</p>
+	<a
+		href="/learn-more/html/common-attributes"
+		class="mb-4 block text-center text-blue-600 underline">📚 Загальні атрибути</a
+	>
+
+	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+		<!-- Пошук і категорії -->
 		<div>
-			<h1 class="text-3xl font-bold">Довідник &lt;a&gt; — інтерактивний</h1>
-			<p class="text-gray-600 mt-1">Повний опис тега <code>&lt;a&gt;</code>, атрибути, rel, A11Y, безпека, SEO та live preview.</p>
-		</div>
-		<div class="text-right">
-			<button class="bg-blue-600 text-white px-3 py-2 rounded mr-2" on:click={downloadPreviewHtml}>Завантажити preview.html</button>
-			<button class="bg-gray-200 px-3 py-2 rounded" on:click={() => { Object.keys(opened).forEach(k => opened[k]=true); opened = {...opened}; }}>Розгорнути всі</button>
-		</div>
-	</header>
-
-	<!-- QUICK TIPS -->
-	<section class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-		<h3 class="font-semibold">Quick tips</h3>
-		<ul class="list-disc ml-5 mt-2 text-sm">
-			{#each quickTips as tip}
-				<li>{tip}</li>
-			{/each}
-		</ul>
-	</section>
-
-	<!-- ACCORDION -->
-	<div class="space-y-3">
-		<!-- Overview -->
-		<div class="border rounded">
-			<button
-				class="w-full text-left p-4 flex justify-between items-center"
-				on:click={() => toggle('overview')}
-				aria-expanded={opened.overview}
-				aria-controls="overview-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Огляд &lt;a&gt;</h2>
-					<p class="text-sm text-gray-600">Семантика, основне призначення, контентна модель.</p>
-				</div>
-				<div class="text-gray-500">{opened.overview ? '−' : '+'}</div>
-			</button>
-			{#if opened.overview}
-				<div id="overview-section" class="p-4 border-t bg-white">
-					<p class="mb-2">Тег <code>&lt;a&gt;</code> створює гіперпосилання. Якщо присутній атрибут <code>href</code>, елемент має поведінку посилання та фокусується клавіатурою.</p>
-					<ul class="list-disc pl-5 text-sm space-y-1">
-						<li>Підтримує текст, інлайн-елементи та зображення.</li>
-						<li>Не рекомендується вкладати інші інтерактивні елементи всередину посилання.</li>
-						<li>Для дій, що не змінюють URL, використовуй <code>&lt;button&gt;</code>.</li>
-					</ul>
-				</div>
-			{/if}
+			<input
+				type="text"
+				placeholder="🔍 Шукай: div, img, form..."
+				bind:value={$query}
+				class="mb-3 w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+			/>
+			<div class="mb-3 flex flex-wrap gap-2">
+				{#each categories as cat}
+					<button
+						on:click={() => activeCategory.set(cat)}
+						class="rounded px-3 py-1 text-sm {$activeCategory === cat
+							? 'bg-blue-600 text-white'
+							: 'bg-gray-200 hover:bg-gray-300'}"
+					>
+						{cat === 'all' ? 'Всі' : cat}
+					</button>
+				{/each}
+			</div>
+			<ul class="max-h-[60vh] overflow-y-auto rounded border">
+				{#each filtered as tag}
+					<li
+						role="button"
+						tabindex="0"
+						class="cursor-pointer border-b px-3 py-2 hover:bg-gray-100"
+						on:click={() => selectTag(tag)}
+						on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectTag(tag)}
+					>
+						<strong>&lt;{tag.name}&gt;</strong>
+						<span class="text-gray-500">({tag.type})</span>
+						— {tag.description}
+					</li>
+				{/each}
+				{#if filtered.length === 0}
+					<li class="px-3 py-2 text-gray-500">😅 Нічого не знайдено</li>
+				{/if}
+			</ul>
 		</div>
 
-		<!-- Syntax -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('syntax')}
-				aria-expanded={opened.syntax}
-				aria-controls="syntax-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Синтаксис</h2>
-					<p class="text-sm text-gray-600">Базовий синтаксис та найпоширеніші схеми URI.</p>
-				</div>
-				<div class="text-gray-500">{opened.syntax ? '−' : '+'}</div>
-			</button>
-			{#if opened.syntax}
-				<div id="syntax-section" class="p-4 border-t bg-white">
-					<pre class="bg-gray-100 rounded p-3 overflow-x-auto"><code>&lt;a href="URL" target="_blank" rel="noopener noreferrer"&gt;Anchor text&lt;/a&gt;</code></pre>
-					<p class="mt-3 text-sm text-gray-700">Схеми: <code>https://</code>, <code>http://</code>, <code>mailto:</code>, <code>tel:</code>, <code>ftp:</code>, <code>data:</code> тощо.</p>
-				</div>
-			{/if}
-		</div>
-
-		<!-- Attributes -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('attributes')}
-				aria-expanded={opened.attributes}
-				aria-controls="attributes-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Атрибути (повна таблиця)</h2>
-					<p class="text-sm text-gray-600">href, target, rel, download, hreflang, type, ping, referrerpolicy та інші.</p>
-				</div>
-				<div class="text-gray-500">{opened.attributes ? '−' : '+'}</div>
-			</button>
-			{#if opened.attributes}
-				<div id="attributes-section" class="p-4 border-t bg-white space-y-3">
-					{#each attributes as attr}
-						<div class="p-3 border rounded">
-							<div class="flex justify-between items-start">
-								<div>
-									<h4 class="font-semibold">{attr.name}</h4>
-									<p class="text-sm text-gray-700 mt-1">{attr.description}</p>
-									{#if attr.note}
-										<p class="text-xs text-gray-500 mt-1">{attr.note}</p>
-									{/if}
-								</div>
-								{#if attr.example}
-									<pre class="bg-gray-50 rounded p-2 text-sm ml-4"><code>{attr.example}</code></pre>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		<!-- rel -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('rel')}
-				aria-expanded={opened.rel}
-				aria-controls="rel-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Атрибут <code>rel</code> — всі варіанти</h2>
-					<p class="text-sm text-gray-600">Повний перелік популярних значень <code>rel</code> з описами та прикладами.</p>
-				</div>
-				<div class="text-gray-500">{opened.rel ? '−' : '+'}</div>
-			</button>
-			{#if opened.rel}
-				<div id="rel-section" class="p-4 border-t bg-white space-y-3">
-					<div class="grid md:grid-cols-2 gap-3">
-						{#each relVariants as rv}
-							<div class="border rounded p-3">
-								<div class="flex justify-between">
-									<h4 class="font-semibold"><code>{rv.value}</code></h4>
-								</div>
-								<p class="text-sm text-gray-700 mt-2">{rv.description}</p>
-								{#if rv.notes}
-									<p class="text-xs text-gray-500 mt-1">{rv.notes}</p>
-								{/if}
-								<pre class="bg-gray-50 rounded p-2 mt-2 text-sm"><code>{rv.example}</code></pre>
-								<div class="mt-2 flex gap-2">
-									<button class="px-2 py-1 text-sm bg-gray-100 rounded" on:click={() => setRelValue(rv.value)}>{rv.value} → set rel</button>
-									<a href="#" class="px-2 py-1 text-sm text-blue-600 underline" rel={rv.value}>Приклад (несправжній)</a>
-								</div>
-							</div>
-						{/each}
+		<!-- Деталі та редактор -->
+		<div class="flex min-h-[200px] flex-col rounded border p-3">
+			{#if $selectedTag}
+				<h2 class="mb-2 text-xl font-semibold">
+					&lt;{$selectedTag.name}&gt;
+					<span class="text-sm text-gray-500">({$selectedTag.type}, {$selectedTag.category})</span>
+				</h2>
+				<p class="mb-2"><strong>📝 Опис:</strong> {$selectedTag.description}</p>
+				<p class="mb-2"><strong>💡 Для новачків:</strong> {$selectedTag.notes}</p>
+				<p class="mb-2"><strong>♿ Доступність:</strong> {$selectedTag.accessibility}</p>
+				{#if $selectedTag.commonAttributes.length > 0}
+					<div class="mb-3">
+						<strong>⚙️ Атрибути:</strong>
+						<ul class="list-disc pl-5 text-sm">
+							{#each $selectedTag.commonAttributes as attr}
+								<li><code>{attr.name}</code> — {attr.desc}</li>
+							{/each}
+						</ul>
 					</div>
-					<div class="text-sm text-gray-600 mt-2">
-						<strong>Примітка:</strong> Значення <code>rel</code> можна комбінувати через пробіли, напр. <code>rel="noopener noreferrer nofollow"</code>.
-					</div>
+				{/if}
+				<a
+					href="https://developer.mozilla.org/uk/docs/Web/HTML/Element/{$selectedTag.name}"
+					target="_blank"
+					class="mb-3 block text-blue-600 underline hover:text-blue-800"
+				>
+					📖 Детальніше на MDN
+				</a>
+				<iframe
+					class="mb-3 h-48 w-full rounded border"
+					srcdoc={$livePreview}
+					title="Попередній перегляд"
+					sandbox=""
+				></iframe>
+				<label class="mb-1 block font-medium">📄 HTML:</label>
+				<textarea
+					bind:value={$liveCode}
+					class="mb-3 h-24 w-full resize-none rounded border p-2 font-mono text-sm"
+				></textarea>
+				<label class="mb-1 block font-medium">🎨 CSS:</label>
+				<textarea
+					bind:value={$liveCss}
+					placeholder={'h1 { color: red; }'}
+					class="mb-3 h-20 w-full resize-none rounded border p-2 font-mono text-sm"
+				></textarea>
+				<div class="flex gap-2">
+					<button
+						on:click={() => {
+							liveCode.set($selectedTag?.example || '');
+							liveCss.set('');
+						}}
+						class="flex-1 rounded bg-gray-500 py-2 text-white hover:bg-gray-600"
+					>
+						Скинути
+					</button>
+					<button
+						on:click={() => {
+							const blob = new Blob([$livePreview], { type: 'text/html' });
+							const url = URL.createObjectURL(blob);
+							const a = document.createElement('a');
+							a.href = url;
+							a.download = `${$selectedTag?.name || 'example'}.html`;
+							a.click();
+							URL.revokeObjectURL(url);
+						}}
+						class="flex-1 rounded bg-green-600 py-2 text-white hover:bg-green-700"
+					>
+						Завантажити HTML
+					</button>
 				</div>
-			{/if}
-		</div>
-
-		<!-- Accessibility -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('accessibility')}
-				aria-expanded={opened.accessibility}
-				aria-controls="accessibility-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">ARIA / Доступність (A11Y)</h2>
-					<p class="text-sm text-gray-600">Рекомендації для екранних рідерів, клавіатурної навігації та семантики.</p>
-				</div>
-				<div class="text-gray-500">{opened.accessibility ? '−' : '+'}</div>
-			</button>
-			{#if opened.accessibility}
-				<div id="accessibility-section" class="p-4 border-t bg-white space-y-2">
-					<ul class="list-disc pl-5 text-sm space-y-1">
-						<li>Текст посилання має бути інформативним (не "натисни тут").</li>
-						<li>Якщо посилання відкриває нову вкладку — познач це в тексті або через <code>aria-label</code> (наприклад: <code>aria-label="Відкрити у новому вікні"</code>).</li>
-						<li>Не використовуйте <code>&lt;a&gt;</code> без <code>href</code> для дій — це порушує очікування користувача; краще <code>&lt;button&gt;</code>.</li>
-						<li>Якщо ви використовуєте <code>&lt;a role="button"&gt;</code>, додайте <code>tabindex="0"</code> та обробку клавіш (Space/Enter).</li>
-						<li>Переконайтесь, що кольори посилань відповідають вимогам контрасту WCAG.</li>
-					</ul>
-					<pre class="bg-gray-50 rounded p-3 text-sm"><code>&lt;a href="/download" aria-label="Завантажити звіт (відкриває в новому вікні)" target="_blank" rel="noopener"&gt;Завантажити звіт&lt;/a&gt;</code></pre>
-				</div>
-			{/if}
-		</div>
-
-		<!-- Security -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('security')}
-				aria-expanded={opened.security}
-				aria-controls="security-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Безпека</h2>
-					<p class="text-sm text-gray-600">Ризики і захист при використанні посилань (window.opener, XSS, referrer).</p>
-				</div>
-				<div class="text-gray-500">{opened.security ? '−' : '+'}</div>
-			</button>
-			{#if opened.security}
-				<div id="security-section" class="p-4 border-t bg-white space-y-3 text-sm text-gray-700">
-					<p><strong>Основні загрози:</strong></p>
-					<ul class="list-disc pl-5">
-						<li><strong>window.opener</strong> — якщо відкриваєш посилання з <code>target="_blank"</code> і не використовуєш <code>rel="noopener"</code>, відкрита сторінка може маніпулювати сторінкою-джерелом (location.href) → phishing.</li>
-						<li><strong>href="javascript:"</strong> — небезпечно, уразливість до XSS; не використовувати.</li>
-						<li><strong>ping</strong> — може витікати деталі кліків в аналітику (приватність).</li>
-					</ul>
-					<p><strong>Рекомендації:</strong></p>
-					<ul class="list-disc pl-5">
-						<li>Для зовнішніх посилань відкривайте з <code>rel="noopener noreferrer"</code> при <code>target="_blank"</code>.</li>
-						<li>Перевіряйте/валідуйте URL, перш ніж рендерити їх із користувацького вводу.</li>
-						<li>Уникайте вбудованого JS у href; використовуйте обробники подій без інлайнового JS.</li>
-					</ul>
-					<pre class="bg-gray-50 rounded p-3 text-sm"><code>&lt;a href="https://external.com" target="_blank" rel="noopener noreferrer"&gt;External&lt;/a&gt;</code></pre>
-				</div>
-			{/if}
-		</div>
-
-		<!-- SEO -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('seo')}
-				aria-expanded={opened.seo}
-				aria-controls="seo-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">SEO рекомендації</h2>
-					<p class="text-sm text-gray-600">Як посилання впливають на індексацію та ранжування.</p>
-				</div>
-				<div class="text-gray-500">{opened.seo ? '−' : '+'}</div>
-			</button>
-			{#if opened.seo}
-				<div id="seo-section" class="p-4 border-t bg-white space-y-2 text-sm text-gray-700">
-					<ul class="list-disc pl-5">
-						<li>Anchor text — важливий сигнал для пошукових систем; роби його описовим.</li>
-						<li>Внутрішні посилання допомагають crawler-ам віднайти структуру сайту і важливі сторінки.</li>
-						<li>Для платних / рекламних посилань використовуйте <code>rel="sponsored"</code>.</li>
-						<li>Для UGC (коментарі) — використовуйте <code>rel="ugc"</code>.</li>
-						<li>Для посилань, які не повинні передавати "вагу", — <code>rel="nofollow"</code>. Пам’ятай, що пошуковики можуть трактувати ці підказки по-різному.</li>
-					</ul>
-					<pre class="bg-gray-50 rounded p-3 text-sm"><code>&lt;a href="https://affiliate.example" rel="sponsored nofollow" target="_blank"&gt;Affiliate&lt;/a&gt;</code></pre>
-				</div>
-			{/if}
-		</div>
-
-		<!-- Examples -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('examples')}
-				aria-expanded={opened.examples}
-				aria-controls="examples-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Приклади (практичні кейси)</h2>
-					<p class="text-sm text-gray-600">Різні сценарії: внутрішні, зовнішні, скачування, UGC, спонсоровані посилання.</p>
-				</div>
-				<div class="text-gray-500">{opened.examples ? '−' : '+'}</div>
-			</button>
-			{#if opened.examples}
-				<div id="examples-section" class="p-4 border-t bg-white space-y-3 text-sm text-gray-700">
-					<div class="grid md:grid-cols-2 gap-3">
-						<div class="border rounded p-3">
-							<h4 class="font-semibold">Внутрішнє посилання</h4>
-							<pre class="bg-gray-50 rounded p-2"><code>&lt;a href="/blog/article-1"&gt;Читати статтю&lt;/a&gt;</code></pre>
-							<p class="text-xs text-gray-500">SvelteKit: внутрішні посилання будуть перехоплені роутером для client-side переходів.</p>
-						</div>
-						<div class="border rounded p-3">
-							<h4 class="font-semibold">Зовнішнє з безпекою</h4>
-							<pre class="bg-gray-50 rounded p-2"><code>&lt;a href="https://external.com" target="_blank" rel="noopener noreferrer"&gt;Відкрити зовнішній ресурс&lt;/a&gt;</code></pre>
-						</div>
-						<div class="border rounded p-3">
-							<h4 class="font-semibold">Скачування файлу</h4>
-							<pre class="bg-gray-50 rounded p-2"><code>&lt;a href="/files/report.pdf" download="report-2025.pdf"&gt;Завантажити звіт&lt;/a&gt;</code></pre>
-						</div>
-						<div class="border rounded p-3">
-							<h4 class="font-semibold">UGC / Коментарі</h4>
-							<pre class="bg-gray-50 rounded p-2"><code>&lt;a href="https://user-site" rel="ugc nofollow"&gt;Посилання з коментаря&lt;/a&gt;</code></pre>
-						</div>
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		<!-- Live preview -->
-		<div class="border rounded">
-			<button
-				class="w-full p-4 flex justify-between items-center"
-				on:click={() => toggle('live')}
-				aria-expanded={opened.live}
-				aria-controls="live-section"
-			>
-				<div>
-					<h2 class="text-lg font-semibold">Live preview — тестуй атрибути</h2>
-					<p class="text-sm text-gray-600">Задай href, target, rel, та ін. і протестуй поведінку в preview (iframe) або відкрий в реальному вікні.</p>
-				</div>
-				<div class="text-gray-500">{opened.live ? '−' : '+'}</div>
-			</button>
-			{#if opened.live}
-				<div id="live-section" class="p-4 border-t bg-white space-y-3">
-					<div class="grid md:grid-cols-2 gap-4">
-						<div>
-							<label class="block text-sm font-medium mb-1">href</label>
-							<input class="w-full rounded border p-2" bind:value={href} />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">Link text</label>
-							<input class="w-full rounded border p-2" bind:value={linkText} />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">target</label>
-							<select class="w-full rounded border p-2" bind:value={target}>
-								<option value="_self">_self (same tab)</option>
-								<option value="_blank">_blank (new tab)</option>
-								<option value="_parent">_parent</option>
-								<option value="_top">_top</option>
-								<option value="">(empty)</option>
-							</select>
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">rel</label>
-							<input class="w-full rounded border p-2" bind:value={rel} placeholder="noopener noreferrer nofollow" />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">download (optional)</label>
-							<input class="w-full rounded border p-2" bind:value={download} placeholder="report.pdf" />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">hreflang (optional)</label>
-							<input class="w-full rounded border p-2" bind:value={hreflang} placeholder="en, fr" />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">referrerpolicy (optional)</label>
-							<select class="w-full rounded border p-2" bind:value={referrerpolicy}>
-								<option value="">(default)</option>
-								<option value="no-referrer">no-referrer</option>
-								<option value="origin">origin</option>
-								<option value="strict-origin-when-cross-origin">strict-origin-when-cross-origin</option>
-								<option value="same-origin">same-origin</option>
-								<option value="strict-origin">strict-origin</option>
-								<option value="no-referrer-when-downgrade">no-referrer-when-downgrade</option>
-								<option value="unsafe-url">unsafe-url</option>
-							</select>
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-1">type (optional)</label>
-							<input class="w-full rounded border p-2" bind:value={typeHint} placeholder="text/html" />
-						</div>
-					</div>
-
-					<div class="flex gap-2 mt-3">
-						<button class="bg-blue-600 text-white px-3 py-2 rounded" on:click={openLinkDemo}>Open/Go (demo)</button>
-						<button class="bg-gray-200 px-3 py-2 rounded" on:click={downloadPreviewHtml}>Download preview HTML</button>
-						<button class="bg-white border px-3 py-2 rounded" on:click={reset}>Reset</button>
-					</div>
-
-					<div class="mt-4 border rounded overflow-hidden">
-						<div class="text-xs p-2 bg-gray-50 border-b">
-							Iframe preview (sandbox). <strong>Примітка:</strong> якщо iframe у sandbox блокує відкриття в новій вкладці, використовуйте кнопку "Open/Go".
-						</div>
-						<iframe
-							class="w-full min-h-48"
-							srcdoc={previewSrcdoc}
-							title="Anchor live preview"
-							sandbox="allow-scripts allow-forms allow-popups"
-						></iframe>
-					</div>
+			{:else}
+				<div class="text-center text-gray-500">
+					<p class="text-lg">🎯 Виберіть тег ліворуч</p>
+					<p>
+						Спробуйте: <strong>div</strong>, <strong>img</strong> або <strong>font</strong> (застарілий)
+					</p>
 				</div>
 			{/if}
 		</div>
 	</div>
-
-	<footer class="text-sm text-gray-500 mt-6">
-		<p>Цей компонент — інтерактивний довідник для <code>&lt;a&gt;</code>. Можна доповнити прикладами, ESLint/AXE правилами або тестами Playwright — скажи, якщо хочеш, і я додам.</p>
-	</footer>
 </div>
+
+1. потрібно типу асайд дерево навігатор для переключень між секціями.
+2. додати в правий панелі більш розширену інфу по тегам.
+3. панда помодоро
+493DBA
+1CB4AE
+221F1F
+#ffffff
+
+#80f1af
+#de6994
+#ab69de
+#e7b750
