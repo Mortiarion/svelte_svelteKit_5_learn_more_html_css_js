@@ -206,7 +206,7 @@
 	{/if}
 </div>
 
-<style>
+<style lang='postcss'>
 	:global(button:focus),
 	:global(input:focus),
 	:global(div:focus) {
