@@ -2,6 +2,7 @@
 	import ThemesToggle from '$lib/components/theme/ThemesToggle.svelte';
 	import { theme } from '$lib/stores/theme';
 	import '../app.css';
+	import { ERoutesNames } from './routing-helpers';
 
 	let { children } = $props();
 </script>
@@ -17,7 +18,7 @@
 				<nav>
 					<ul class="flex gap-5 font-medium underline">
 						<li>
-							<a href="/">Landing page</a>
+							<a href={ERoutesNames.root}>Landing page</a>
 						</li>
 
 						<li>
@@ -28,7 +29,7 @@
 			</div>
 		</header>
 
-		<main>
+		<main class='flex-auto'>
 			{@render children()}
 		</main>
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { ERoutesNames } from "../../../routes/routing-helpers";
+
 	const tags: string[] = [
 		'\u003Chtml>',
 		'\u003Chead>',
@@ -53,7 +55,7 @@
 			чому.
 		</p>
 		<a
-			href="/panda-learn-more/html/"
+			href={ERoutesNames.html}
 			class="mt-10 rounded-full bg-blue-500 px-8 py-3 font-medium shadow-lg transition hover:bg-blue-600"
 		>
 			Почати навчання

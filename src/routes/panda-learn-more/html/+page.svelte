@@ -1,9 +1,15 @@
-<ul>
-	<li>
-		<a href="/panda-learn-more/html/reference-book">Reference book</a>
-	</li>
+<script lang="ts">
+	import { ERoutesNames } from '../../routing-helpers';
+</script>
 
-	<li>
-		<a href="/panda-learn-more/html/practice">Practice</a>
-	</li>
-</ul>
+<section class="container mx-auto">
+	<ul class=" underline">
+		<li>
+			<a href={ERoutesNames.htmlReferenceBook}>Reference book html</a>
+		</li>
+
+		<li>
+			<a href={ERoutesNames.htmlPractice}>Practice</a>
+		</li>
+	</ul>
+</section>

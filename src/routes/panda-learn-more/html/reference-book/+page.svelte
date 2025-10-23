@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { writable } from 'svelte/store';
+	import { ERoutesNames } from '../../../routing-helpers';
+
 
 	interface Tag {
 		name: string;
@@ -507,7 +509,7 @@
 		Експериментуйте з тегами! Категорії, CSS-редактор, доступність.
 	</p>
 	<a
-		href="/learn-more/html/common-attributes"
+		href={ERoutesNames.htmlCommonAttributes}
 		class="mb-4 block text-center text-blue-600 underline">📚 Загальні атрибути</a
 	>
 
@@ -523,7 +525,7 @@
 			<div class="mb-3 flex flex-wrap gap-2">
 				{#each categories as cat}
 					<button
-						on:click={() => activeCategory.set(cat)}
+						onclick={() => activeCategory.set(cat)}
 						class="rounded px-3 py-1 text-sm {$activeCategory === cat
 							? 'bg-blue-600 text-white'
 							: 'bg-gray-200 hover:bg-gray-300'}"
@@ -538,8 +540,8 @@
 						role="button"
 						tabindex="0"
 						class="cursor-pointer border-b px-3 py-2 hover:bg-gray-100"
-						on:click={() => selectTag(tag)}
-						on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectTag(tag)}
+						onclick={() => selectTag(tag)}
+						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectTag(tag)}
 					>
 						<strong>&lt;{tag.name}&gt;</strong>
 						<span class="text-gray-500">({tag.type})</span>
@@ -598,7 +600,7 @@
 				></textarea>
 				<div class="flex gap-2">
 					<button
-						on:click={() => {
+						onclick={() => {
 							liveCode.set($selectedTag?.example || '');
 							liveCss.set('');
 						}}
@@ -607,7 +609,7 @@
 						Скинути
 					</button>
 					<button
-						on:click={() => {
+						onclick={() => {
 							const blob = new Blob([$livePreview], { type: 'text/html' });
 							const url = URL.createObjectURL(blob);
 							const a = document.createElement('a');
