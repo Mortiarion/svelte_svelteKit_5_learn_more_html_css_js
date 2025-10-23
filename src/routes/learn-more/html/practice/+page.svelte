@@ -30,7 +30,13 @@
 
 </header>`,
     
-		form: `<form><label>Ім'я:</label><input type="text"><button>Відправити</button></form>`
+		form: `<form>
+    <label>Ім'я:</label>
+
+    <input type="text">
+    
+    <button>Відправити</button>
+</form>`
 	} as const;
 
 	let selectedExample = $state<keyof typeof examples>('header');
