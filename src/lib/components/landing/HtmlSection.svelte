@@ -52,11 +52,12 @@
 			Власний інтерактивний довідник і зверстаємо сайт з нуля. Пояснимо все що буде відбуватись і
 			чому.
 		</p>
-		<button
+		<a
+			href="/panda-learn-more/html/"
 			class="mt-10 rounded-full bg-blue-500 px-8 py-3 font-medium shadow-lg transition hover:bg-blue-600"
 		>
 			Почати навчання
-		</button>
+		</a>
 	</div>
 </section>
 

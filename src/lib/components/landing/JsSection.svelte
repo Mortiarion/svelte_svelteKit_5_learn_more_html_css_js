@@ -88,10 +88,10 @@
 			{/each}
 		</div>
 
-		<button
+		<a href="/js"
 			class="mt-10 px-8 py-3 bg-yellow-500 hover:bg-yellow-600 rounded-full font-medium shadow-lg transition"
 		>
 			Почати навчання
-		</button>
+		</a>
 	</div>
 </section>

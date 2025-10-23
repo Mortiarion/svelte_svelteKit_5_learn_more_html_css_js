@@ -28,14 +28,15 @@
 			</div>
 		</header>
 
-		<main class=" flex-auto overflow-y-scroll py-5">
-			<div class="container mx-auto">
-				{@render children()}
-			</div>
+		<main>
+			{@render children()}
 		</main>
 
 		<footer class=" ">
-			<div class="container mx-auto">Платформа для навчання по технологіям HTML, CSS, JS, SVELTE 5, SVELTEKIT,TS, NODE.JS, EXPRESS, POSTGRESS DB</div>
+			<div class="container mx-auto">
+				Платформа для навчання по технологіям HTML, CSS, JS, SVELTE 5, SVELTEKIT,TS, NODE.JS,
+				EXPRESS, POSTGRESS DB
+			</div>
 		</footer>
 	</div>
 {/if}
