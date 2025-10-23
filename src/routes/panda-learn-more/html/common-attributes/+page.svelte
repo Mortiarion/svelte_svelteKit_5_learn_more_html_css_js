@@ -207,11 +207,6 @@
 </div>
 
 <style lang='postcss'>
-	:global(button:focus),
-	:global(input:focus),
-	:global(div:focus) {
-		@apply ring-2 ring-blue-300 outline-none;
-	}
 	:global(.cursor-move) {
 		cursor: move;
 	}
